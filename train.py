@@ -1,10 +1,13 @@
-from time import sleep
-
-import pyaudio
+import sys
+import time
+import readchar
 import math
 import random
+import simpleaudio as sa
+import curses
+import json
 
-BITRATE = 8000
+BITRATE = 44100
 
 class MorseGenerator:
     morse = {'A': '.-', 'B': '-...',
@@ -19,27 +22,31 @@ class MorseGenerator:
                        '1': '.----', '2': '..---', '3': '...--',
                        '4': '....-', '5': '.....', '6': '-....',
                        '7': '--...', '8': '---..', '9': '----.',
-                       '0': '-----', ', ': '--..--', '.': '.-.-.-',
-                       '?': '..--..', '/': '-..-.', '-': '-....-',
-                       '(': '-.--.', ')': '-.--.-'}
+                       '0': '-----', ',': '--..--', '.': '.-.-.-',
+                       '?': '..--..', '/': '-..-.',
+                       }
 
     koch_order = "KMURESNAPTLWI.JZ=FOY,VG5/Q92H38B?47C1D60X"
 
-    def get_tone(self, duration, quiet=False):
-        print(f"duration={duration}")
+    def get_tone(self, duration, frequency=None, quiet=False):
         samples = int(BITRATE * duration)
-        print(f"samples={samples}")
-        buffer = ""
+        buffer = bytearray()
+
+        if frequency:
+            f = frequency
+        else:
+            f = self.frequency
 
         for x in range(samples):
             if not quiet:
-                buffer += chr(int(math.sin(x / ((BITRATE / self.frequency) / math.pi)) * 127 + 128))
+                num = int(math.sin(x / ((BITRATE / f) / math.pi)) * 32700 + 32768)
             else:
-                buffer += chr(128)
-        print(f"buffer-len={len(buffer)}")
+                num = 32768
+            buffer.append(num % 256)
+            buffer.append(int(num / 256))
         return buffer
 
-    def __init__(self, frequency=600, char_wpm = 30, farnsworth_wpm = 8):
+    def __init__(self, frequency=800, char_wpm = 30, farnsworth_wpm = 10):
         self.char_wpm = char_wpm
         self.farnsworth_wpm = farnsworth_wpm
         self.frequency = frequency
@@ -47,23 +54,9 @@ class MorseGenerator:
         self.dit_time = 60.0 / (50.0 * char_wpm)
         self.dah_time = self.dit_time * 3
         self.farnsworth_time = ((60.0/farnsworth_wpm) - 31*self.dit_time) / 19.0
-        print(self.farnsworth_time)
 
         self.dit = self.get_dit()
         self.dah = self.get_dah()
-
-        self.p = pyaudio.PyAudio()
-        self.stream = self.p.open(format=self.p.get_format_from_width(1),
-                        channels=1,
-                        rate=BITRATE,
-                        output=True)
-        self.stream.write(self.get_tone(1, quiet=True))
-
-    def stop(self):
-        self.stream.write(self.get_tone(1, quiet=True))
-        self.stream.stop_stream()
-        self.stream.close()
-        self.p.terminate()
 
     def get_dit(self):
         return self.get_tone(self.dit_time)
@@ -75,10 +68,16 @@ class MorseGenerator:
         return self.get_tone(self.dit_time, quiet=True)
 
     def get_char_space(self):
-        return self.get_tone(self.farnsworth_time*3, quiet=True)
+        return self.get_tone(self.char_space_duration(), quiet=True)
+
+    def char_space_duration(self):
+        return self.farnsworth_time*3
 
     def get_word_space(self):
-        return self.get_tone(self.farnsworth_time*7, quiet=True)
+        return self.get_tone(self.word_space_duration(), quiet=True)
+
+    def word_space_duration(self):
+        return self.farnsworth_time*7
 
     def get_audio_for_char(self, c):
         element_space = self.get_element_space()
@@ -88,15 +87,12 @@ class MorseGenerator:
         if upper_c in MorseGenerator.morse:
             code = MorseGenerator.morse[upper_c]
             for element in code:
-                print(element)
                 if element == ".":
                     elements.append(self.get_dit())
                 elif element == "-":
                     elements.append(self.get_dah())
                 else:
                     raise Exception("Gotta be a dit or dash")
-            for element in elements:
-                print(len(element))
         char_buffer = element_space.join(elements)
         return char_buffer
 
@@ -105,52 +101,233 @@ class MorseGenerator:
         in_words = s.split(" ")
         for word in in_words:
             word_buffer = self.get_audio_for_word(word)
-            print("foo")
-            print(f"len of {word} is {len(word_buffer)}")
             words.append(word_buffer)
         return self.get_word_space().join(words)
 
     def get_audio_for_word(self, word):
 
         char_space = self.get_char_space()
-
         letters = []
         for c in word:
-            print(c)
+            letter_buffer = self.get_audio_for_char(c)
+            letters.append(letter_buffer)
 
-
-        print(len(char_space))
         word_buffer = char_space.join(letters)
-        print(len(word_buffer))
         return word_buffer
 
     def play(self, s):
-        buffer = self.get_audio_for_char(s)
-        print(f"writing buffer len = {len(buffer)}")
-        half = int(len(buffer) / 2)
-        self.stream.write(buffer[0:half])
-        self.stream.write(buffer[half:])
+        buffer = self.get_audio_for_word(s)
+        play_obj = sa.play_buffer(buffer, 1, 2, BITRATE)
+        play_obj.wait_done()
+
+    def error_buzz(self):
+        buffer = self.get_tone(0.2, 200)
+        play_obj = sa.play_buffer(buffer, 1, 2, BITRATE)
+        play_obj.wait_done()
+        buffer = self.get_tone(0.3, 200, quiet=True)
+        play_obj = sa.play_buffer(buffer, 1, 2, BITRATE)
+        play_obj.wait_done()
+
+def current_time():
+    return int(round(time.time() * 1000))
+
+def read_config():
+    try:
+        f = open('config.json')
+    except FileNotFoundError:
+        f = open('config.json', 'w+')
+
+    try:
+        config = json.load(f)
+    except json.JSONDecodeError as e:
+        config = {}
+
+    if "starting_koch_index" not in config:
+        config["starting_koch_index"] = 5
+
+    if "rolling_reactions_by_char" not in config:
+        config["rolling_reactions_by_char"] = {}
+        config["rolling_reactions_by_char"]['*'] = []
+        for k in MorseGenerator.morse.keys():
+            config["rolling_reactions_by_char"][k] = []
+
+    if "rolling_mistakes_by_char" not in config:
+        config["rolling_mistakes_by_char"] = {}
+        for k in MorseGenerator.morse.keys():
+            config["rolling_mistakes_by_char"][k] = []
+
+    return config
+
+def write_config(c):
+    f = open('config.json', 'w')
+    json.dump(c, f)
+
+
+class Display:
+    def __init__(self):
+        self.screen = curses.initscr()
+        curses.start_color()
+        curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
+        curses.noecho()
+
+        self.typed_chars = ""
+
+    def update_target_time(self, target_recognition_time):
+        self.screen.addstr(0, 0, f"Your target recognition time is {target_recognition_time}ms")
+
+    def update_last_char_time(self, last_char_time):
+        self.screen.addstr(1, 0, f"Last char: {last_char_time}            ")
+
+    def update_typed_chars(self, last_char):
+        self.typed_chars += last_char
+        typed_chars = self.typed_chars[-10:]
+        self.screen.addstr(1, 20, f"{typed_chars}                ")
+
+    def display_reaction_times(self, config, target_recognition_time):
+
+        reactions = list()
+
+        for k, v in config["rolling_reactions_by_char"].items():
+            if k == '*':
+                m = []
+            else:
+                m = config["rolling_mistakes_by_char"][k]
+            reactions.append(ReactionTime(k, v, m))
+
+        reactions.sort(key = lambda r: r.avg, reverse=True)
+
+        index = 2
+        for reaction in reactions:
+            color = 0
+            if reaction.avg > target_recognition_time or reaction.error_ratio > 0.05:
+                color = 1
+            self.screen.addstr(index, 0, f"{reaction.char}: {reaction.avg:>5} - {reaction.count:>5} - {reaction.error_ratio:.2f}       ", curses.color_pair(color))
+            index += 1
+
+    def get_key(self):
+        return self.screen.getkey().upper()
+
+    def show_training_chars(self, chars):
+        self.screen.addstr(0, 40, f"Training on: {chars}           ")
+
+    def show_selection_set(self, chars):
+        self.screen.addstr(45, 0, f"Selection: {chars}                                  ")
+
+def get_next_random_char(config, training_chars, target_time):
+    # We want to weigh numbers with high errors first, and then high delay to come more frequently
+
+    selection_set = ""
+
+    counts = []
+    for ch in training_chars:
+        react_data = config["rolling_reactions_by_char"][ch]
+        mistake_data = config["rolling_mistakes_by_char"][ch]
+        r = ReactionTime(ch, react_data, mistake_data)
+        counts.append(r.count)
+    counts.sort()
+    if len(counts) > 0:
+        median = counts[int(len(counts) / 2)]
+    else:
+        median = 0
+
+    for ch in training_chars:
+        factor = 1
+        r = ReactionTime(ch, config["rolling_reactions_by_char"][ch], config["rolling_mistakes_by_char"][ch])
+        if r.avg > target_time:
+            factor *= 2
+        if r.count < median:
+            factor *= 2
+        if r.error_ratio > 0.05:
+            factor *= 6
+        for x in range(factor):
+            selection_set += ch
+
+    return random.choice(selection_set), selection_set
+
+
+
+class ReactionTime:
+
+    def __init__(self, chr, moving, moving_mistakes):
+        self.char = chr
+        self.avg = int(sum(moving) / len(moving)) if len(moving) > 0 else 0
+        self.count = len(moving)
+
+        mistakes = sum(moving_mistakes)
+        total_entries = len(moving_mistakes)
+        if total_entries == 0:
+            self.error_ratio = 0
+        else:
+            self.error_ratio = 1.0 * mistakes / total_entries
+
 
 def main():
 
+    config = read_config()
+
     generator = MorseGenerator()
+    display = Display()
+    target_recognition_time = int(generator.char_space_duration() * 0.75 * 1000)
+    display.update_target_time(target_recognition_time)
+    display.display_reaction_times(config, target_recognition_time)
 
+    while True:
+        training_chars = MorseGenerator.koch_order[0:config["starting_koch_index"]]
+        display.show_training_chars(training_chars)
 
+        random_char, selection_set =  get_next_random_char(config, training_chars, target_recognition_time)
+        display.show_selection_set(selection_set)
 
-    starting_koch_index = 5
-    random_char = MorseGenerator.koch_order[random.randint(0, starting_koch_index)]
+        not_entered_correctly = True
+        while not_entered_correctly:
+            generator.play(random_char)
+            start_time = current_time()
+            try:
+                user_input = display.get_key()
+            except KeyboardInterrupt:
+                # Force an exit
+                user_input = "\n"
+            if user_input == "\n":
+                write_config(config)
+                sys.exit(0)
+            difference = current_time() - start_time
 
+            # Don't add any really crazy numbers
+            if difference > target_recognition_time * 3:
+                continue
 
-    #generator.play("Hello")
-    #generator.play("World")
-    print(random_char)
-    generator.play(".")
-    sleep(1)
-    generator.stop()
+            if random_char != user_input:
+                generator.error_buzz()
+                config["rolling_mistakes_by_char"][random_char].append(1)
+            else:
+                config["rolling_mistakes_by_char"][random_char].append(0)
 
-    #for buffer in generator.get_audio_for_text('Hello world'):
-    #    stream.write(buffer)
+                config["rolling_reactions_by_char"]['*'].append(difference)
+                config["rolling_reactions_by_char"][user_input].append(difference)
 
+                config["rolling_reactions_by_char"]['*'] = config["rolling_reactions_by_char"]['*'][-50:]
+                config["rolling_reactions_by_char"][user_input] = config["rolling_reactions_by_char"][user_input][-50:]
+
+                display.update_last_char_time(difference)
+                display.update_typed_chars(user_input)
+                not_entered_correctly = False
+
+                config["rolling_mistakes_by_char"][random_char] = config["rolling_mistakes_by_char"][random_char][-50:]
+
+            display.display_reaction_times(config, target_recognition_time)
+
+            add_new_char = True
+            for char in training_chars + "*":
+                if char == '*':
+                    m = []
+                else:
+                    m = config["rolling_mistakes_by_char"][char]
+                r = ReactionTime(char, config["rolling_reactions_by_char"][char], m)
+                if r.avg > target_recognition_time or r.count < 25 or r.error_ratio > 0.05:
+                    add_new_char = False
+                    break
+            if add_new_char:
+                config["starting_koch_index"] += 1
 
 
 main()
