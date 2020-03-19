@@ -277,7 +277,7 @@ def main():
 
     generator = MorseGenerator()
     display = Display()
-    target_recognition_time = int(generator.char_space_duration() * 0.75 * 1000)
+    target_recognition_time = int(generator.char_space_duration() * 0.85 * 1000)
     display.update_target_time(target_recognition_time)
     display.display_reaction_times(config, target_recognition_time)
 
