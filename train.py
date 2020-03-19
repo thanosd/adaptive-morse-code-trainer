@@ -244,9 +244,14 @@ def get_next_random_char(config, training_chars, target_time):
 
     selection_set = training_chars
 
+    if len(problematic) > 3:
+        limit_selection = len(training_chars)
+    else:
+        limit_selection = max(int(len(training_chars) / 2), 1)
+
     if len(problematic) > 0:
         extras = ""
-        while len(extras) < len(training_chars):
+        while len(extras) < limit_selection:
             extras += problematic
         selection_set += extras
 
