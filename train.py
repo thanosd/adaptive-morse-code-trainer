@@ -230,17 +230,27 @@ def get_next_random_char(config, training_chars, target_time):
     else:
         median = 0
 
+    problematic = ""
     for ch in training_chars:
         factor = 1
         r = ReactionTime(ch, config["rolling_reactions_by_char"][ch], config["rolling_mistakes_by_char"][ch])
         if r.avg > target_time:
-            factor *= 2
-        if r.count < median:
-            factor *= 2
-        if r.error_ratio > 0.05:
+            problematic += ch
+        elif r.count < median:
+            problematic += ch
+        elif r.error_ratio > 0.05:
+            problematic += ch
             factor *= 6
-        for x in range(factor):
-            selection_set += ch
+
+    selection_set = training_chars
+
+    if len(problematic) > 0:
+        extras = ""
+        while len(extras) < len(training_chars):
+            extras += problematic
+        selection_set += extras
+
+    selection_set = ''.join(sorted(selection_set))
 
     return random.choice(selection_set), selection_set
 
@@ -293,7 +303,7 @@ def main():
             difference = current_time() - start_time
 
             # Don't add any really crazy numbers
-            if difference > target_recognition_time * 3:
+            if difference > target_recognition_time * 2:
                 continue
 
             if random_char != user_input:
