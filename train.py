@@ -199,9 +199,21 @@ class Display:
         index = 2
         for reaction in reactions:
             color = 0
-            if reaction.avg > target_recognition_time or reaction.error_ratio > 0.05:
+            if reaction.avg > target_recognition_time:
                 color = 1
-            self.screen.addstr(index, 0, f"{reaction.char}: {reaction.avg:>5} - {reaction.count:>5} - {reaction.error_ratio:.2f}       ", curses.color_pair(color))
+            self.screen.addstr(index, 0, f"{reaction.char}: {reaction.avg:>5} - {reaction.count:>3}       ", curses.color_pair(color))
+            index += 1
+
+        reactions.sort(key = lambda r: r.error_ratio, reverse=True)
+
+        index = 2
+        for reaction in reactions:
+            color = 0
+            if reaction.error_ratio > 0.05:
+                color = 1
+            self.screen.addstr(index, 40,
+                               f"{reaction.char}: - {reaction.error_ratio:.2f}       ",
+                               curses.color_pair(color))
             index += 1
 
     def get_key(self):
