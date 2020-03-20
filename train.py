@@ -39,7 +39,7 @@ class MorseGenerator:
 
         for x in range(samples):
             if not quiet:
-                num = int(math.sin(x / ((BITRATE / f) / math.pi)) * 32700 + 32768)
+                num = int(math.sin(x / ((BITRATE / f) / math.pi)) * 25000 + 32768)
             else:
                 num = 32768
             buffer.append(num % 256)
