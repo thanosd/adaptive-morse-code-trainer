@@ -330,7 +330,7 @@ def main():
             difference = current_time() - start_time
 
             # Don't add any really crazy numbers
-            if difference > target_recognition_time * 2:
+            if difference > target_recognition_time * 5 or user_input == " ":
                 continue
 
             if random_char != user_input:
