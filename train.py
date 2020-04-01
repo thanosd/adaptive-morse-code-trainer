@@ -175,13 +175,23 @@ class Display:
     def update_target_time(self, target_recognition_time):
         self.screen.addstr(0, 0, f"Your target recognition time is {target_recognition_time}ms")
 
-    def update_last_char_time(self, last_char_time):
-        self.screen.addstr(1, 0, f"Last char: {last_char_time}            ")
+    def update_last_char_time(self, last_char_time, target_recognition_time):
+        self.screen.addstr(1, 20, f"Last char: {last_char_time}            ")
+
+
+        if last_char_time < target_recognition_time:
+            total_boxes = int(last_char_time / 20)
+            self.screen.addstr(1, 40, "x"*total_boxes + 80*" " )
+        else:
+            white_boxes = int(target_recognition_time / 20)
+            red_boxes = int((last_char_time - target_recognition_time) / 20)
+            self.screen.addstr(1, 40, "x" * white_boxes)
+            self.screen.addstr(1, 40 + white_boxes, "x" * red_boxes + 80*" ", curses.color_pair(1))
 
     def update_typed_chars(self, last_char):
         self.typed_chars += last_char
         typed_chars = self.typed_chars[-10:]
-        self.screen.addstr(1, 20, f"{typed_chars}                ")
+        self.screen.addstr(1, 0, f"{typed_chars}                ")
 
     def display_reaction_times(self, config, target_recognition_time):
 
@@ -335,7 +345,7 @@ def main():
                 config["rolling_reactions_by_char"]['*'] = config["rolling_reactions_by_char"]['*'][-50:]
                 config["rolling_reactions_by_char"][user_input] = config["rolling_reactions_by_char"][user_input][-50:]
 
-                display.update_last_char_time(difference)
+                display.update_last_char_time(difference, target_recognition_time)
                 display.update_typed_chars(user_input)
                 not_entered_correctly = False
 
