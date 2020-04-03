@@ -221,8 +221,10 @@ class Display:
             color = 0
             if reaction.error_ratio > 0.05:
                 color = 1
+            errors = ["*" if a else " " for a in reaction.moving_mistakes]
+            errors_string = "".join(errors)
             self.screen.addstr(index, 40,
-                               f"{reaction.char}: - {reaction.error_ratio:.2f}       ",
+                               f"{reaction.char}: - {reaction.error_ratio:.2f}  {errors_string}     ",
                                curses.color_pair(color))
             index += 1
 
@@ -293,6 +295,7 @@ class ReactionTime:
         self.char = chr
         self.avg = int(sum(moving) / len(moving)) if len(moving) > 0 else 0
         self.count = len(moving)
+        self.moving_mistakes = moving_mistakes
 
         mistakes = sum(moving_mistakes)
         total_entries = len(moving_mistakes)
