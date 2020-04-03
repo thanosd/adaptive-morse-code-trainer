@@ -252,19 +252,23 @@ def get_next_random_char(config, training_chars, target_time):
     else:
         median = 0
 
-    problematic = ""
+    accuracy_problematic = ""
+    time_problematic = ""
     for ch in training_chars:
-        factor = 1
         r = ReactionTime(ch, config["rolling_reactions_by_char"][ch], config["rolling_mistakes_by_char"][ch])
         if r.avg > target_time:
-            problematic += ch
-        elif r.count < median:
-            problematic += ch
+            time_problematic += ch
+        if r.count < median:
+            accuracy_problematic += ch
         elif r.error_ratio > 0.05:
-            problematic += ch
-            factor *= 6
+            accuracy_problematic += ch
 
     selection_set = training_chars
+
+    if len(accuracy_problematic) > 0:
+        problematic = accuracy_problematic
+    else:
+        problematic = time_problematic
 
     if len(problematic) > 3:
         limit_selection = len(training_chars)
