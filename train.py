@@ -1,6 +1,5 @@
 import sys
 import time
-import readchar
 import math
 import random
 import simpleaudio as sa
@@ -221,7 +220,7 @@ class Display:
             color = 0
             if reaction.error_ratio > 0.05:
                 color = 1
-            errors = ["*" if a else " " for a in reaction.moving_mistakes]
+            errors = ["*" if a else " " for a in reversed(reaction.moving_mistakes)]
             errors_string = "".join(errors)
             self.screen.addstr(index, 40,
                                f"{reaction.char}: - {reaction.error_ratio:.2f}  {errors_string}     ",
@@ -297,7 +296,7 @@ class ReactionTime:
         self.count = len(moving)
         self.moving_mistakes = moving_mistakes
 
-        mistakes = sum(moving_mistakes)
+        mistakes = sum(moving_mistakes[0:25]) / 2 + sum(moving_mistakes[26:])
         total_entries = len(moving_mistakes)
         if total_entries == 0:
             self.error_ratio = 0
@@ -311,7 +310,7 @@ def main():
 
     generator = MorseGenerator()
     display = Display()
-    target_recognition_time = int(generator.char_space_duration() * 0.85 * 1000)
+    target_recognition_time = int(generator.char_space_duration() * 1000)
     display.update_target_time(target_recognition_time)
     display.display_reaction_times(config, target_recognition_time)
 
